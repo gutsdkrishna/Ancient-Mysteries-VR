@@ -4,18 +4,81 @@ using UnityEngine;
 
 public class Arrow : MonoBehaviour
 {
-    public int damageAmount = 20;
-    private void Start()
-    { 
-        Destroy(gameObject, 10);
-    }
-    private void OnTriggerEnter(Collider other)
+    public float speed = 10f;
+    public Transform tip;
+
+    private Rigidbody _rigidBody;
+    private bool _inAir = false;
+    private Vector3 _lastPosition = Vector3.zero;
+
+    private void Awake()
     {
-        Destroy(transform.GetComponent<Rigidbody>());
-        if (other.tag == "Dragon")
+        _rigidBody = GetComponent<Rigidbody>();
+        PullInteraction.PullActionReleased += Release;
+
+        Stop();
+    }
+    private void OnDestroy()
+    {
+        PullInteraction.PullActionReleased -= Release;
+    }
+    private void Release(float value)
+    {
+        PullInteraction.PullActionReleased -= Release;
+        gameObject.transform.parent = null;
+        _inAir = true;
+        SetPhysics(true);
+        Vector3 force = transform.forward * value * speed;
+        _rigidBody.AddForce(force, ForceMode.Impulse);
+        StartCoroutine(RotateWithVelocity());
+        _lastPosition = tip.position;
+    }
+    private IEnumerator RotateWithVelocity()
+    {
+        yield return new WaitForFixedUpdate();
+        while (_inAir)
         {
-            transform.parent = other.transform;
-            other.GetComponent<Bear>().TakeDamage(damageAmount);
+            Quaternion newRotation = Quaternion.LookRotation(_rigidBody.velocity, transform.up);
+            transform.rotation = newRotation;
+            yield return null;
         }
+    }
+
+
+    void FixedUpdate()
+    {
+        if (_inAir)
+        {
+            CheckCollision();
+            _lastPosition = tip.position;
+        }
+    }
+    private void CheckCollision()
+    {
+        if (Physics.Linecast(_lastPosition, tip.position, out RaycastHit hitInfo))
+        {
+            if(hitInfo.transform.gameObject.layer != 8)
+            {
+                if (hitInfo.transform.TryGetComponent (out Rigidbody body))
+                {
+                    _rigidBody.interpolation = RigidbodyInterpolation.None;
+                    transform.parent = hitInfo.transform;
+                    body.AddForce(_rigidBody.velocity, ForceMode.Impulse);
+                }
+                Stop();
+            }
+        }
+    }
+
+            
+    private void Stop()
+    {
+        _inAir = false;
+        SetPhysics(false);
+    }
+    private void SetPhysics(bool usePhysics)
+    {
+        _rigidBody.useGravity = usePhysics;
+        _rigidBody.isKinematic = !usePhysics;
     }
 }
